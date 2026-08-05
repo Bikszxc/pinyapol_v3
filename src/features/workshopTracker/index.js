@@ -1,7 +1,7 @@
 import { MessageFlags } from 'discord.js';
 import { getTrackedMods, updateModTimestamp } from '../../lib/supabase.js';
 import { getWorkshopItemDetails } from '../../lib/steam.js';
-import { buildUpdateNotification } from './ui.js';
+import { buildUpdateNotification, buildWorkshopRestartNotice } from './ui.js';
 
 /** @type {import('discord.js').Client} */
 let client;
@@ -28,6 +28,7 @@ async function checkForUpdates() {
             if (lastUpdatedSteam > lastUpdatedDb) {
                 console.log(`[WorkshopTracker] Update detected for mod: ${details.title}`);
                 await notifyUpdate(track.channel_id, details);
+                await notifyStatusChannelRestart(details);
                 await updateModTimestamp(track.mod_id, lastUpdatedSteam);
             }
         }
@@ -58,17 +59,63 @@ async function notifyUpdate(channelId, details) {
 }
 
 /**
+ * Sends a restart warning notice to the status channel when a workshop mod update is detected.
+ */
+async function notifyStatusChannelRestart(details) {
+    const statusChannelId = process.env.STATUS_CHANNEL_ID;
+    if (!statusChannelId) return;
+
+    try {
+        const channel = await client.channels.fetch(statusChannelId);
+        if (!channel) return;
+
+        const container = buildWorkshopRestartNotice(details);
+
+        await channel.send({
+            components: [container],
+            flags: MessageFlags.IsComponentsV2
+        });
+
+        console.log(`[WorkshopTracker] Posted restart notice in status channel for mod: ${details.title}`);
+    } catch (error) {
+        console.error('[WorkshopTracker] Error posting status channel restart notice:', error);
+    }
+}
+
+
+/**
+ * Schedules workshop update checks aligned to clock boundaries (x:00, x:10, x:20, etc.)
+ */
+function scheduleAlignedCheck() {
+    const now = new Date();
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+    const ms = now.getMilliseconds();
+
+    const minutesToNext = 10 - (minutes % 10);
+    const delay = (minutesToNext * 60 - seconds) * 1000 - ms;
+
+    console.log(`[WorkshopTracker] Next aligned check in ${Math.round(delay / 1000)}s.`);
+
+    setTimeout(async () => {
+        await checkForUpdates();
+        scheduleAlignedCheck();
+    }, delay);
+}
+
+/**
  * Feature initializer — called by the loader.
  * @param {import('discord.js').Client} discordClient
  */
 export function init(discordClient) {
     client = discordClient;
 
-    const interval = process.env.CHECK_INTERVAL_MS || 300000;
-    setInterval(checkForUpdates, interval);
-
-    // Initial check
+    // Run immediate initial check
     checkForUpdates();
 
-    console.log(`[WorkshopTracker] Initialized. Polling every ${interval}ms.`);
+    // Start clock-aligned 10-minute scheduler (x:00, x:10, x:20, ...)
+    scheduleAlignedCheck();
+
+    console.log('[WorkshopTracker] Initialized. Cron active for every 10 minutes on the clock (x:00, x:10, x:20...).');
 }
+

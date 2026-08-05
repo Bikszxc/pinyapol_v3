@@ -54,3 +54,48 @@ export function buildUpdateNotification(details) {
 
     return container;
 }
+
+/**
+ * Builds a Components V2 container for the status channel when a workshop update requires a restart warning.
+ * @param {object} details - Steam Workshop item details
+ * @returns {ContainerBuilder}
+ */
+export function buildWorkshopRestartNotice(details) {
+    const titleText = new TextDisplayBuilder()
+        .setContent(`# ⚠️ Workshop Mod Update Detected`);
+
+    const titleSeparator = new SeparatorBuilder()
+        .setDivider(true)
+        .setSpacing(SeparatorSpacingSize.Small);
+
+    const bodyText = new TextDisplayBuilder()
+        .setContent([
+            `A Steam Workshop mod update was detected for **${details.title}** (\`${details.publishedfileid}\`).`,
+            ``,
+            `⏳ **The server is scheduled / ongoing countdown to restart soon.**`,
+            `🚫 **Please refrain from joining the server at the moment.**`
+        ].join('\n'));
+
+    const infoSeparator = new SeparatorBuilder()
+        .setDivider(false)
+        .setSpacing(SeparatorSpacingSize.Small);
+
+    const button = new ButtonBuilder()
+        .setLabel('View Mod on Workshop')
+        .setURL(`https://steamcommunity.com/sharedfiles/filedetails/?id=${details.publishedfileid}`)
+        .setStyle(ButtonStyle.Link);
+
+    const actionRow = new ActionRowBuilder()
+        .addComponents(button);
+
+    const container = new ContainerBuilder()
+        .setAccentColor(0xE67E22) // Orange Warning Accent
+        .addTextDisplayComponents(titleText)
+        .addSeparatorComponents(titleSeparator)
+        .addTextDisplayComponents(bodyText)
+        .addSeparatorComponents(infoSeparator)
+        .addActionRowComponents(actionRow);
+
+    return container;
+}
+

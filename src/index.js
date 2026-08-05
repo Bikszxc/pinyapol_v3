@@ -11,6 +11,18 @@ const client = new Client({
     ]
 });
 
+client.on('error', (err) => {
+    console.error('[Discord Client Error]', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('[Unhandled Rejection]', reason);
+});
+
+process.on('uncaughtException', (err) => {
+    console.error('[Uncaught Exception]', err);
+});
+
 client.once('clientReady', async () => {
     console.log(`Logged in as ${client.user.tag}!`);
 
@@ -21,3 +33,4 @@ client.once('clientReady', async () => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+

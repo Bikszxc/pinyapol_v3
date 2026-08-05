@@ -1,142 +1,69 @@
 import { GameDig } from 'gamedig';
-import { PteroClient } from './pterodactyl.js';
 
 export async function getServerStatus() {
     try {
-        const ptero = new PteroClient();
-        const pteroState = await ptero.getState();
-        const schedules = await ptero.getSchedules();
+        const host = process.env.PZ_SERVER_IP;
+        const port = parseInt(process.env.PZ_SERVER_PORT) || 16261;
 
-        const now = new Date();
-        const RESTART_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
-
-        // 1. Map Transitional Power States FIRST
-        const pteroLabels = {
-            'offline': 'Offline',
-            'stopping': 'Stopping...',
-            'starting': 'Starting...',
-        };
-
-        if (pteroLabels[pteroState]) {
+        if (!host) {
+            console.warn('[ServerStatus] PZ_SERVER_IP is not configured.');
             return {
-                state: pteroState,
-                label: pteroLabels[pteroState],
-                pteroState
+                state: 'offline',
+                label: 'Offline (No IP Configured)',
+                players: 0,
+                maxPlayers: 0,
+                map: 'N/A',
+                name: 'Server'
             };
         }
 
-        // 2. Determine MOST RECENT relevant schedule (Warning or Recent)
-        const relevantSchedules = schedules
-            .filter(s => {
-                const nameLower = s.name.toLowerCase();
-                return nameLower.includes('workshop') || nameLower.includes('daily');
-            })
-            .sort((a, b) => {
-                const dateA = new Date(a.is_processing ? a.updated_at : a.last_run_at || 0);
-                const dateB = new Date(b.is_processing ? b.updated_at : b.last_run_at || 0);
-                return dateB - dateA;
-            });
-
-        const activeSchedule = relevantSchedules[0];
-
-        // 3. Process 'Running' State (Queryable vs Processing Phase)
-        if (pteroState === 'running') {
-            // A. Check for ACTIVE Processing (The Warning/Countdown Phase)
-            if (activeSchedule && activeSchedule.is_processing) {
-                const triggerTime = new Date(activeSchedule.updated_at || activeSchedule.last_run_at);
-                const completionTime = new Date(triggerTime.getTime() + RESTART_WINDOW_MS);
-                const unixCompletion = Math.floor(completionTime.getTime() / 1000);
-                const unixTrigger = Math.floor(triggerTime.getTime() / 1000);
-
-                const isWorkshop = activeSchedule.name.toLowerCase().includes('workshop');
-                const typeLabel = isWorkshop ? 'Workshop' : 'Daily';
-
-                return {
-                    state: 'restarting_scheduled',
-                    type: typeLabel,
-                    label: `Scheduled ${typeLabel} Restart`,
-                    countdown: `<t:${unixCompletion}:R>`,
-                    trigger: `<t:${unixTrigger}:T>`,
-                    pteroState
-                };
-            }
-
-            // B. Check for recently finished schedule (The Reboot/Loading Phase)
-            if (activeSchedule && activeSchedule.last_run_at) {
-                const lastRunDate = new Date(activeSchedule.last_run_at);
-                const diff = Math.abs(now - lastRunDate);
-
-                if (diff < RESTART_WINDOW_MS) {
-                    // Try to see if it's joinable yet
-                    try {
-                        // GRACE PERIOD: Ignore queries if triggered < 60s ago
-                        if (diff > 60000) {
-                            const query = await GameDig.query({
-                                type: 'projectzomboid',
-                                host: process.env.PZ_SERVER_IP,
-                                port: parseInt(process.env.PZ_SERVER_PORT) || 16261
-                            });
-
-                            return {
-                                state: 'running',
-                                label: 'Running',
-                                players: query.players.length,
-                                maxPlayers: query.maxplayers,
-                                map: query.map,
-                                name: query.name,
-                                pteroState
-                            };
-                        }
-                    } catch (e) {
-                        // Still loading...
-                    }
-
-                    const unixTrigger = Math.floor(lastRunDate.getTime() / 1000);
-                    return {
-                        state: 'restarting_scheduled',
-                        type: activeSchedule.name.toLowerCase().includes('workshop') ? 'Workshop' : 'Daily',
-                        label: `Processing Restart`,
-                        countdown: 'Finalizing reboot...',
-                        trigger: `<t:${unixTrigger}:T>`,
-                        pteroState
-                    };
-                }
-            }
-
-            // C. Standard Running Check (No session/schedule nearby)
+        let attempt = 0;
+        let lastError = null;
+        while (attempt < 2) {
             try {
                 const query = await GameDig.query({
                     type: 'projectzomboid',
-                    host: process.env.PZ_SERVER_IP,
-                    port: parseInt(process.env.PZ_SERVER_PORT) || 16261
+                    host,
+                    port,
+                    listenport: port,
+                    givenPortOnly: true,
+                    attemptTimeout: 4000
                 });
 
                 return {
                     state: 'running',
                     label: 'Running',
-                    players: query.players.length,
-                    maxPlayers: query.maxplayers,
-                    map: query.map,
-                    name: query.name,
-                    pteroState
+                    players: query.players ? query.players.length : 0,
+                    maxPlayers: query.maxplayers || 0,
+                    map: query.map || 'Knox Country',
+                    name: query.name || 'Project Zomboid Server'
                 };
-            } catch (error) {
-                return {
-                    state: 'starting',
-                    label: 'Offline (Initializing)',
-                    pteroState
-                };
+            } catch (err) {
+                lastError = err;
+                attempt++;
+                if (attempt < 2) {
+                    await new Promise(res => setTimeout(res, 1500));
+                }
             }
         }
 
-        // 4. Default Fallback
         return {
-            state: pteroState,
-            label: 'Unknown',
-            pteroState
+            state: 'offline',
+            label: 'Offline',
+            players: 0,
+            maxPlayers: 0,
+            map: 'N/A',
+            name: 'Server',
+            error: lastError?.message
         };
     } catch (error) {
-        console.error('Error in getServerStatus:', error);
-        return { state: 'error', label: 'Offline (API Error)', pteroState: 'error' };
+        return {
+            state: 'offline',
+            label: 'Offline',
+            players: 0,
+            maxPlayers: 0,
+            map: 'N/A',
+            name: 'Server'
+        };
     }
 }

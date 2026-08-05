@@ -2,8 +2,6 @@ import {
     MessageFlags,
     ContainerBuilder,
     TextDisplayBuilder,
-    SeparatorBuilder,
-    SeparatorSpacingSize,
 } from 'discord.js';
 import { getConfig, upsertConfig, getCategories, addCategory, removeCategory } from './db.js';
 import { buildTicketPanel } from './ui.js';
@@ -12,6 +10,7 @@ import { buildTicketPanel } from './ui.js';
  * Handles all /ticket-config subcommands.
  */
 export async function handleConfigCommand(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const sub = interaction.options.getSubcommand();
     const guildId = interaction.guildId;
 
@@ -39,7 +38,7 @@ export async function handleConfigCommand(interaction) {
         case 'list-types':
             return handleListTypes(interaction, guildId);
         default:
-            return interaction.reply({ content: 'Unknown subcommand.', flags: MessageFlags.Ephemeral });
+            return interaction.editReply({ content: 'Unknown subcommand.' });
     }
 }
 
@@ -47,17 +46,17 @@ export async function handleConfigCommand(interaction) {
  * Handles all /ticket-setup subcommands.
  */
 export async function handleSetupCommand(interaction) {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const sub = interaction.options.getSubcommand();
     const guildId = interaction.guildId;
     const config = await getConfig(guildId);
 
     if (!config || !config.category_id || !config.staff_role_id || !config.staff_channel_id) {
-        return interaction.reply({
+        return interaction.editReply({
             content: '❌ **Ticketing not fully configured.** Please set the following first:\n' +
                 '• `/ticket-config set-category`\n' +
                 '• `/ticket-config set-staff-role`\n' +
                 '• `/ticket-config set-staff-channel`',
-            flags: MessageFlags.Ephemeral,
         });
     }
 
@@ -75,17 +74,15 @@ export async function handleSetupCommand(interaction) {
             panel_message_id: msg.id,
         });
 
-        return interaction.reply({
+        return interaction.editReply({
             content: '✅ Ticket panel deployed!',
-            flags: MessageFlags.Ephemeral,
         });
     }
 
     if (sub === 'refresh') {
         if (!config.panel_channel_id || !config.panel_message_id) {
-            return interaction.reply({
+            return interaction.editReply({
                 content: '❌ No existing panel found. Use `/ticket-setup deploy` first.',
-                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -97,15 +94,13 @@ export async function handleSetupCommand(interaction) {
                 flags: MessageFlags.IsComponentsV2,
             });
 
-            return interaction.reply({
+            return interaction.editReply({
                 content: '✅ Ticket panel refreshed!',
-                flags: MessageFlags.Ephemeral,
             });
         } catch (err) {
             console.error('[Tickets] Error refreshing panel:', err);
-            return interaction.reply({
+            return interaction.editReply({
                 content: '❌ Could not find the existing panel. Try deploying a new one with `/ticket-setup deploy`.',
-                flags: MessageFlags.Ephemeral,
             });
         }
     }
@@ -126,15 +121,13 @@ async function handleSetValue(interaction, guildId, field, value, label) {
             return `<#${id}>`;
         });
 
-        return interaction.reply({
+        return interaction.editReply({
             content: `✅ **${label}** updated to ${displayValue}`,
-            flags: MessageFlags.Ephemeral,
         });
     } catch (err) {
         console.error(`[Tickets] Error setting ${field}:`, err);
-        return interaction.reply({
+        return interaction.editReply({
             content: `❌ Failed to update ${label}. Please try again.`,
-            flags: MessageFlags.Ephemeral,
         });
     }
 }
@@ -165,9 +158,9 @@ async function handleView(interaction, guildId) {
         .setAccentColor(0x3498DB)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 
-    return interaction.reply({
+    return interaction.editReply({
         components: [container],
-        flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+        flags: MessageFlags.IsComponentsV2,
     });
 }
 
@@ -180,14 +173,12 @@ async function handleAddType(interaction, guildId) {
 
     try {
         await addCategory(guildId, { key, label, emoji, color, description });
-        return interaction.reply({
+        return interaction.editReply({
             content: `✅ Added category: ${emoji} **${label}** (\`${key}\`)`,
-            flags: MessageFlags.Ephemeral,
         });
     } catch (err) {
-        return interaction.reply({
+        return interaction.editReply({
             content: `❌ ${err.message}`,
-            flags: MessageFlags.Ephemeral,
         });
     }
 }
@@ -197,14 +188,12 @@ async function handleRemoveType(interaction, guildId) {
 
     try {
         await removeCategory(guildId, key);
-        return interaction.reply({
+        return interaction.editReply({
             content: `✅ Removed category: \`${key}\``,
-            flags: MessageFlags.Ephemeral,
         });
     } catch (err) {
-        return interaction.reply({
+        return interaction.editReply({
             content: `❌ ${err.message}`,
-            flags: MessageFlags.Ephemeral,
         });
     }
 }
@@ -222,8 +211,8 @@ async function handleListTypes(interaction, guildId) {
         .setAccentColor(0x2ECC71)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join('\n')));
 
-    return interaction.reply({
+    return interaction.editReply({
         components: [container],
-        flags: MessageFlags.Ephemeral | MessageFlags.IsComponentsV2,
+        flags: MessageFlags.IsComponentsV2,
     });
 }

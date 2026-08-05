@@ -3,6 +3,9 @@ import {
     SeparatorBuilder,
     SeparatorSpacingSize,
     TextDisplayBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    ActionRowBuilder,
 } from 'discord.js';
 
 /**
@@ -11,30 +14,14 @@ import {
  * @returns {{ emoji: string, accentColor: number, displayLabel: string }}
  */
 export function getStatusStyling(status) {
-    let emoji = '⚪';
-    let accentColor = 0x808080; // Gray
-    let displayLabel = status.label;
+    let emoji = '🔴';
+    let accentColor = 0xE74C3C; // Red
+    let displayLabel = 'Server is Offline';
 
     if (status.state === 'running') {
         emoji = '🟢';
         accentColor = 0x2ECC71; // Green
         displayLabel = 'Server is Online';
-    } else if (status.state === 'restarting_scheduled') {
-        emoji = '⏳';
-        accentColor = 0x9B59B6; // Purple
-        displayLabel = `Scheduled ${status.type} Restart`;
-    } else if (status.state === 'restarting_normal') {
-        emoji = '🟠';
-        accentColor = 0xE67E22; // Orange
-        displayLabel = 'Server is Restarting';
-    } else if (status.state === 'starting') {
-        emoji = '🟡';
-        accentColor = 0xF1C40F; // Yellow
-        displayLabel = 'Server is Initializing';
-    } else if (status.state === 'offline' || status.state === 'stopping') {
-        emoji = '🔴';
-        accentColor = 0xE74C3C; // Red
-        displayLabel = 'Server is Offline';
     }
 
     return { emoji, accentColor, displayLabel };
@@ -50,9 +37,6 @@ export function getActivityLabel(status, styling) {
     if (status.state === 'running') {
         return `🟢 Online | ${status.players} / ${status.maxPlayers} Players`;
     }
-    if (status.state === 'restarting_scheduled') {
-        return `⏳ Restarting | ${status.countdown.includes(':') ? 'Countdown' : status.label}`;
-    }
     return `${styling.emoji} ${styling.displayLabel}`;
 }
 
@@ -63,6 +47,9 @@ export function getActivityLabel(status, styling) {
  * @returns {ContainerBuilder}
  */
 export function buildStatusMessage(status, styling) {
+    const ip = process.env.PZ_SERVER_IP || '188.72.197.193';
+    const port = process.env.PZ_SERVER_PORT || '26945';
+
     const titleText = new TextDisplayBuilder()
         .setContent(`# ${styling.emoji} ${styling.displayLabel}`);
 
@@ -91,20 +78,31 @@ export function buildStatusMessage(status, styling) {
     if (status.state === 'running') {
         const statsText = new TextDisplayBuilder().setContent([
             `### ${status.name}`,
+            `🌐 **IP:** \`${ip}\``,
+            `🔌 **Port:** \`${port}\``,
             `👤 **Players:** \`${status.players} / ${status.maxPlayers}\``,
             `🗺️ **Map:** \`${status.map || 'Knox Country'}\``
         ].join('\n'));
 
-        container
-            .addTextDisplayComponents(statsText)
-            .addSeparatorComponents(infoSeparator);
-    } else if (status.state === 'restarting_scheduled' && status.countdown) {
-        const countdownText = new TextDisplayBuilder()
-            .setContent(`**Restarting:** ${status.countdown}\n**Triggered At:** ${status.trigger}`);
+        const copyIpButton = new ButtonBuilder()
+            .setCustomId('status_copy_ip')
+            .setLabel('Copy IP')
+            .setEmoji('🌐')
+            .setStyle(ButtonStyle.Secondary);
+
+        const copyPortButton = new ButtonBuilder()
+            .setCustomId('status_copy_port')
+            .setLabel('Copy Port')
+            .setEmoji('🔌')
+            .setStyle(ButtonStyle.Secondary);
+
+        const actionRow = new ActionRowBuilder()
+            .addComponents(copyIpButton, copyPortButton);
 
         container
-            .addTextDisplayComponents(countdownText)
-            .addSeparatorComponents(infoSeparator);
+            .addTextDisplayComponents(statsText)
+            .addSeparatorComponents(infoSeparator)
+            .addActionRowComponents(actionRow);
     } else {
         container.addSeparatorComponents(infoSeparator);
     }
